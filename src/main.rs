@@ -1,6 +1,5 @@
 use actix_web::{get, web, App, HttpServer, Responder};
 use dotenv::dotenv;
-use std::{env, io};
 
 
 mod database;
@@ -23,7 +22,7 @@ async fn main() -> std::io::Result<()> {
     .app_data(web::Data::new(pool.clone()))
     .service(routes::test_database)
     .service(greet))
-        .bind("0.0.0.0:8088")?
+        .bind(("0.0.0.0", 8088))?
         .workers(2)
         .run()
         .await
