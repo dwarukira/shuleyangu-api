@@ -5,6 +5,9 @@ use dotenv::dotenv;
 mod database;
 mod health;
 mod routes;
+mod models;
+mod utils;
+mod schema;
 
 
 #[get("/hello/{name}")]
@@ -21,6 +24,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || App::new()
     .app_data(web::Data::new(pool.clone()))
     .service(routes::test_database)
+    .configure(routes::configure)
     .service(greet))
         .bind(("0.0.0.0", 8088))?
         .workers(2)
