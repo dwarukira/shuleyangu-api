@@ -1,12 +1,16 @@
 use crate::models::error::ApiError;
 use crate::models::ids::DecodingError;
 use crate::models::ids::{parse_base62, to_base62};
-use crate::utils::auth::{get_github_user_from_token, get_github_user_emails};
+use crate::utils::auth::{get_github_user_from_token, get_github_user_emails, hash_password};
+use crate::utils::validate::validation_errors_to_string;
 use crate::{database::PostgresPool, utils::env::parse_string_from_var};
-use actix_web::{get, http, web, web::Data, web::Query, HttpResponse};
+use actix_web::web::Json;
+use actix_web::{get, http, web, web::Data, web::Query, HttpResponse, post};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use validator::{Validate, ValidationError};
+
 
 #[derive(Deserialize, Serialize)]
 pub struct OAuthInfoInit {
@@ -17,6 +21,17 @@ pub struct OAuthInfoInit {
 pub struct OAuthInfoCallback {
     pub code: String,
     pub state: String,
+}
+
+#[derive(Serialize, Deserialize, Validate)]
+pub struct SignUpEmail {
+    #[validate(email)]
+    pub email: String,
+    pub password: String,
+    #[validate(length(min = 1))]
+    pub first_name: String,
+    #[validate(length(min = 1))]
+    pub last_name: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -44,6 +59,10 @@ pub enum AuthorizationError {
     SerDe(#[from] serde_json::Error),
     #[error("Authentication Error: {0}")]
     Authentication(#[from] crate::utils::auth::AuthenticationError),
+    #[error("Error user already exists")]
+    UserAlreadyExists,
+    #[error("Error while validating input: {0}")]
+    ValidationError(String),
 }
 
 impl actix_web::ResponseError for AuthorizationError {
@@ -58,6 +77,8 @@ impl actix_web::ResponseError for AuthorizationError {
                 AuthorizationError::Github(..) => "github_error",
                 AuthorizationError::SerDe(..) => "serde_error",
                 AuthorizationError::Authentication(..) => "authentication_error",
+                AuthorizationError::UserAlreadyExists => "user_already_exists",
+                AuthorizationError::ValidationError(..) => "validation_error",
             },
             description: &self.to_string(),
         })
@@ -73,6 +94,8 @@ impl actix_web::ResponseError for AuthorizationError {
             AuthorizationError::Github(..) => http::StatusCode::FAILED_DEPENDENCY,
             AuthorizationError::SerDe(..) => http::StatusCode::BAD_REQUEST,
             AuthorizationError::Authentication(..) => http::StatusCode::UNAUTHORIZED,
+            AuthorizationError::UserAlreadyExists => http::StatusCode::CONFLICT,
+            AuthorizationError::ValidationError(..) => http::StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -175,6 +198,7 @@ pub async fn github_callback(
                 middle_name: Some("".to_string()),
                 email: Some(email.unwrap_or("".to_string())),
                 phone: Some("".to_string()),
+                password: Some("".to_string()),
             };
             diesel::insert_into(crate::schema::users::table)
                 .values(&user)
@@ -193,10 +217,51 @@ pub async fn github_callback(
         .json(OAuthInfoInit { url: redirect_url }))
 }
 
+#[post("signup/email")]
+pub async fn sign_up_email(
+    Json(sign_up_email_data): Json<SignUpEmail>,
+    client: Data<PostgresPool>,
+) -> Result<HttpResponse, AuthorizationError> {
+    sign_up_email_data.validate().map_err(|e| {
+      AuthorizationError::ValidationError(validation_errors_to_string(e, None))
+    })?;
+
+    let mut conn = client.get().unwrap();
+    let user = crate::schema::users::table
+        .filter(crate::schema::users::email.eq(&sign_up_email_data.email))
+        .first::<crate::models::user::User>(&mut conn)
+        .optional()?;
+
+    if user.is_some() {
+        return Err(AuthorizationError::UserAlreadyExists);
+    }
+    let password_hash = hash_password(&sign_up_email_data.password);
+    let user = crate::models::user::NewUser {
+        github_id: None,
+        first_name: sign_up_email_data.first_name,
+        last_name: sign_up_email_data.last_name,
+        middle_name: None,
+        email: Some(sign_up_email_data.email),
+        phone: None,
+        password: Some(password_hash),
+    };
+
+    diesel::insert_into(crate::schema::users::table)
+        .values(&user)
+        .get_result::<crate::models::user::User>(&mut conn)?;
+    
+    Ok(HttpResponse::Ok().json(()))   
+}
+
+
+
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("auth")
             .service(github_init)
-            .service(github_callback),
+            .service(github_callback)
+            .service(sign_up_email)
     );
 }
+

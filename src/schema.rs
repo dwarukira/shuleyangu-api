@@ -22,6 +22,8 @@ diesel::table! {
         created_at -> Timestamp,
         updated_at -> Timestamp,
         github_id -> Nullable<Varchar>,
+        email_verified_at -> Nullable<Timestamptz>,
+        email_verification_token -> Nullable<Varchar>,
     }
 }
 

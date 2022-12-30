@@ -15,6 +15,8 @@ pub struct User {
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
     pub github_id: Option<String>,
+    pub email_verified_at: Option<NaiveDateTime>,
+    pub email_verification_token: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Insertable)]
@@ -26,4 +28,5 @@ pub struct NewUser {
     pub middle_name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    pub password: Option<String>,
 }

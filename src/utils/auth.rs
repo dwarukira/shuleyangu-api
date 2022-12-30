@@ -1,5 +1,6 @@
 use thiserror::Error;
 use serde::{Deserialize, Serialize};
+use argon2::{self, Config, ThreadMode, Variant, Version};
 
 
 #[derive(Error, Debug)]
@@ -61,4 +62,22 @@ pub async fn get_github_user_emails(
         .json()
         .await?)
 
+}
+
+
+pub fn hash_password(password: &str) -> String {
+    let config = Config {
+        variant: Variant::Argon2id,
+        version: Version::Version13,
+        mem_cost: 65536,
+        time_cost: 3,
+        lanes: 4,
+        thread_mode: ThreadMode::Parallel,
+        secret: &[],
+        ad: &[],
+        hash_length: 32,
+    };
+    let  salt = [0u8; 16];
+    let hash = argon2::hash_encoded(password.as_bytes(), &salt, &config).unwrap();
+    hash
 }
