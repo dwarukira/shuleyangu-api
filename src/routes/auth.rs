@@ -1,16 +1,19 @@
 use crate::models::error::ApiError;
 use crate::models::ids::DecodingError;
 use crate::models::ids::{parse_base62, to_base62};
-use crate::utils::auth::{get_github_user_from_token, get_github_user_emails, hash_password};
+use crate::utils::auth::{
+    generate_auth_token, get_github_user_emails, get_github_user_from_token, hash_password,
+};
 use crate::utils::validate::validation_errors_to_string;
 use crate::{database::PostgresPool, utils::env::parse_string_from_var};
+use actix_web::cookie::Cookie;
 use actix_web::web::Json;
-use actix_web::{get, http, web, web::Data, web::Query, HttpResponse, post};
+use actix_web::{get, http, post, web, web::Data, web::Query, HttpRequest, HttpResponse};
+use chrono::Duration;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use validator::{Validate, ValidationError};
-
+use validator::Validate;
 
 #[derive(Deserialize, Serialize)]
 pub struct OAuthInfoInit {
@@ -114,7 +117,7 @@ pub async fn github_init(
     let mut conn = client.get().unwrap();
     let state = crate::models::states::NewStates {
         url: info.url.clone(),
-        expires_at: chrono::Utc::now().naive_utc() + chrono::Duration::hours(1),
+        expires_at: chrono::Utc::now().naive_utc() + Duration::hours(1),
     };
     let state = diesel::insert_into(crate::schema::states::table)
         .values(&state)
@@ -221,10 +224,11 @@ pub async fn github_callback(
 pub async fn sign_up_email(
     Json(sign_up_email_data): Json<SignUpEmail>,
     client: Data<PostgresPool>,
+    req: HttpRequest,
 ) -> Result<HttpResponse, AuthorizationError> {
-    sign_up_email_data.validate().map_err(|e| {
-      AuthorizationError::ValidationError(validation_errors_to_string(e, None))
-    })?;
+    sign_up_email_data
+        .validate()
+        .map_err(|e| AuthorizationError::ValidationError(validation_errors_to_string(e, None)))?;
 
     let mut conn = client.get().unwrap();
     let user = crate::schema::users::table
@@ -246,15 +250,59 @@ pub async fn sign_up_email(
         password: Some(password_hash),
     };
 
-    diesel::insert_into(crate::schema::users::table)
+    let user = diesel::insert_into(crate::schema::users::table)
         .values(&user)
         .get_result::<crate::models::user::User>(&mut conn)?;
-    
-    Ok(HttpResponse::Ok().json(()))   
+
+    let session = crate::models::session::NewSession {
+        token: generate_auth_token(32),
+        user_id: user.id,
+        ip_address: Some("".to_string()),
+        device_id: Some("".to_string()),
+        expires_at: chrono::Utc::now().naive_utc() + Duration::days(30),
+    };
+
+    let session = diesel::insert_into(crate::schema::sessions::table)
+        .values(&session)
+        .get_result::<crate::models::session::Session>(&mut conn)?;
+
+    let cookie = Cookie::build("auth_token", session.token)
+        .path("/")
+        .secure(false)
+        .http_only(true)
+        .finish();
+
+    Ok(HttpResponse::Ok()
+        .append_header(("Set-Cookie", cookie.to_string()))
+        .json(()))
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConfirmLogin {
+    pub auth_token: String,
+}
 
+#[get("access_tokens/confirmed_login")]
+pub async fn confirm_login(
+    Query(info): Query<ConfirmLogin>,
+    client: Data<PostgresPool>,
+) -> Result<HttpResponse, AuthorizationError> {
+    // TODO: check if token is valid
+    let mut conn = client.get().unwrap();
+    let session = crate::schema::sessions::table
+        .filter(crate::schema::sessions::token.eq(&info.auth_token))
+        .first::<crate::models::session::Session>(&mut conn)
+        .optional()?;
+    if session.is_none() {
+        return Err(AuthorizationError::InvalidCredentials);
+    }
+    let session = session.unwrap();
+    let user = crate::schema::users::table
+        .filter(crate::schema::users::id.eq(session.user_id))
+        .first::<crate::models::user::User>(&mut conn)?;
 
+    Ok(HttpResponse::Ok().json(user))
+}
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -262,6 +310,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(github_init)
             .service(github_callback)
             .service(sign_up_email)
+            .service(confirm_login),
     );
 }
-

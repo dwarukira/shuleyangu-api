@@ -1,6 +1,20 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    sessions (id) {
+        id -> Int4,
+        user_id -> Int4,
+        token -> Varchar,
+        device_id -> Nullable<Varchar>,
+        ip_address -> Nullable<Varchar>,
+        expires_at -> Timestamp,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+        last_used_at -> Nullable<Timestamp>,
+    }
+}
+
+diesel::table! {
     states (id) {
         id -> Int4,
         url -> Varchar,
@@ -27,7 +41,22 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    verification_codes (id) {
+        id -> Int4,
+        code -> Text,
+        identifier -> Text,
+        expires_at -> Timestamp,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::joinable!(sessions -> users (user_id));
+
 diesel::allow_tables_to_appear_in_same_query!(
+    sessions,
     states,
     users,
+    verification_codes,
 );

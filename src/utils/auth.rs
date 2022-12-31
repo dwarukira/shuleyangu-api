@@ -1,7 +1,9 @@
-use thiserror::Error;
-use serde::{Deserialize, Serialize};
-use argon2::{self, Config, ThreadMode, Variant, Version};
+use std::iter;
 
+use argon2::{self, Config, ThreadMode, Variant, Version};
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AuthenticationError {
@@ -54,16 +56,13 @@ pub async fn get_github_user_emails(
         .header(reqwest::header::USER_AGENT, "Shule")
         .header(
             reqwest::header::AUTHORIZATION,
-            format!("token {}",
-            access_token),
+            format!("token {}", access_token),
         )
         .send()
         .await?
         .json()
         .await?)
-
 }
-
 
 pub fn hash_password(password: &str) -> String {
     let config = Config {
@@ -77,7 +76,21 @@ pub fn hash_password(password: &str) -> String {
         ad: &[],
         hash_length: 32,
     };
-    let  salt = [0u8; 16];
+    let salt = [0u8; 16];
     let hash = argon2::hash_encoded(password.as_bytes(), &salt, &config).unwrap();
     hash
+}
+
+pub fn generate_verification_code() -> String {
+    let mut rng = rand::thread_rng();
+    let sample = rng.gen_range(0..1000);
+    format!("{:04}", sample)
+}
+
+
+pub fn generate_auth_token(len : usize) -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut rng = rand::thread_rng();
+    let one_char = || CHARSET[rng.gen_range(0..CHARSET.len())] as char;
+    iter::repeat_with(one_char).take(len).collect()
 }

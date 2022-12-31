@@ -1,4 +1,4 @@
-use actix_web::{get, web, App, HttpServer, Responder, error, HttpResponse};
+use actix_web::{error, get, web, App, HttpResponse, HttpServer, Responder};
 use dotenv::dotenv;
 
 mod database;
@@ -7,6 +7,7 @@ mod models;
 mod routes;
 mod schema;
 mod utils;
+mod mail;
 
 #[get("/hello/{name}")]
 async fn greet(name: web::Path<String>) -> impl Responder {
@@ -22,6 +23,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .service(routes::test_database)
+            .configure(routes::configure)
             .app_data(web::JsonConfig::default().error_handler(|err, _req| {
                 error::InternalError::from_response(
                     "",
@@ -31,7 +33,6 @@ async fn main() -> std::io::Result<()> {
                 )
                 .into()
             }))
-            .configure(routes::configure)
             .service(greet)
     })
     .bind(("0.0.0.0", 8088))?

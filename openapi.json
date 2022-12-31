@@ -1,0 +1,191 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Shuleyangu",
+    "description": "Shuleyangu is a school management system that helps schools to manage their students, teachers, classes, subjects, exams, fees, and other school related activities.",
+    "termsOfService": "http://shuleyangu.co/terms/",
+    "contact": {
+      "email": "dwarukira@gmail.com",
+      "name": "Duncan Warukira",
+      "url": "http://warukira.com"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://shuleyangu.co/api/v1",
+      "description": "Shuleyangu production api"
+    },
+    {
+      "url": "http://localhost:8088/api/v1",
+      "description": "Shuleyangu localhost api"
+    }
+  ],
+  "paths": {
+    "/v1/user": {
+      "post": {
+        "summary": "Create a new user",
+        "description": "",
+        "operationId": "createUser",
+        "tags": ["user"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/User"
+              }
+            }
+          },
+          "description": "User object that needs to be added to the system",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "User already exists"
+          }
+        }
+      }
+    },
+    "/v1/profiles": {
+      "get": {
+        "summary": "Get a user profile",
+        "description": "Get a user profile by user identifier (email or phone number)",
+        "operationId": "getUserProfileByIdentifier",
+        "tags": ["profile"],
+        "parameters": [
+          {
+            "name": "user_identifier",
+            "in": "query",
+            "description": "User identifier (email or phone number) to get profile for (optional)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "v1/devices/outbound_verification/code": {
+      "post": {
+        "summary": "Send verification code to a device",
+        "description": "Send verification code to a device",
+        "operationId": "sendVerificationCode",
+        "tags": ["device"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRequest"
+              }
+            }
+          },
+          "description": "Device object that needs to be added to the system",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Device already exists"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Identity": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "needs": {
+            "type": "object",
+            "properties": {
+              "full_name": {
+                "type": "boolean"
+              },
+              "password": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "DeviceRequest": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          }
+        }
+      },
+      "Device": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "verification_code": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "security": {},
+  "tags": {
+    "user": {
+      "name": "user",
+      "description": "Operations about user"
+    },
+    "profile": {
+      "name": "profile",
+      "description": "Operations about user profile"
+    }
+  }
+}
