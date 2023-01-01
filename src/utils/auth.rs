@@ -1,9 +1,16 @@
 use std::iter;
 
+use actix_web::{dev::ServiceRequest, FromRequest};
+use actix_web_httpauth::extractors::bearer::BearerAuth;
+use actix_web_httpauth::middleware::HttpAuthentication;
 use argon2::{self, Config, ThreadMode, Variant, Version};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use alcoholic_jwt::{token_kid, validate, Validation, JWKS};
+
+use crate::models::user::User;
 
 #[derive(Error, Debug)]
 pub enum AuthenticationError {
@@ -13,6 +20,15 @@ pub enum AuthenticationError {
     Github(#[from] reqwest::Error),
     #[error("Error while parsing JSON: {0}")]
     SerDe(#[from] serde_json::Error),
+    #[error("Unauthorized")]
+    Unauthorized,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    company: String,
+    exp: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -83,12 +99,11 @@ pub fn hash_password(password: &str) -> String {
 
 pub fn generate_verification_code() -> String {
     let mut rng = rand::thread_rng();
-    let sample = rng.gen_range(0..1000);
+    let sample = rng.gen_range(0..9999);
     format!("{:04}", sample)
 }
 
-
-pub fn generate_auth_token(len : usize) -> String {
+pub fn generate_auth_token(len: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let mut rng = rand::thread_rng();
     let one_char = || CHARSET[rng.gen_range(0..CHARSET.len())] as char;

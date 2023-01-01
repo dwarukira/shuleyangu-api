@@ -2,8 +2,11 @@ use crate::mail::mail::send_email;
 use crate::models::user::NewUser;
 use crate::schema::users;
 use crate::schema::verification_codes;
+use crate::utils::auth::generate_auth_token;
 use crate::{routes::ApiError, utils::validate::validation_errors_to_string};
+use actix_web::cookie::Cookie;
 use actix_web::{post, web, HttpResponse};
+use chrono::Duration;
 use diesel::prelude::*;
 use serde::Serialize;
 use validator::Validate;
@@ -21,6 +24,12 @@ pub struct Address {
     // todo add phone number validation or email validation
     #[validate(email)]
     pub address: String,
+}
+
+#[derive(serde::Deserialize, Serialize)]
+pub struct VerificationResponse {
+    pub auth_token: String,
+    pub user_id: i32,
 }
 
 #[post["outbound_verification"]]
@@ -53,7 +62,28 @@ pub async fn outbound_verification(
         .values(&user)
         .get_result::<crate::models::user::User>(&mut connection)?;
 
-    Ok(HttpResponse::Ok().finish())
+    let session = crate::models::session::NewSession {
+        token: generate_auth_token(64),
+        user_id: user.id,
+        ip_address: Some("".to_string()),
+        device_id: Some("".to_string()),
+        expires_at: chrono::Utc::now().naive_utc() + Duration::days(30),
+    };
+
+    let session = diesel::insert_into(crate::schema::sessions::table)
+        .values(&session)
+        .get_result::<crate::models::session::Session>(&mut connection)?;
+
+    let response = VerificationResponse {
+        auth_token: session.token.to_string(),
+        user_id: user.id,
+    };
+    let cookie = Cookie::build("auth_token", session.token)
+        .path("/")
+        .secure(false)
+        .http_only(true)
+        .finish();
+    Ok(HttpResponse::Ok().cookie(cookie).json(response))
 }
 
 #[post("outbound_verification/code")]

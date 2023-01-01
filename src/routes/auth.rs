@@ -1,6 +1,7 @@
 use crate::models::error::ApiError;
 use crate::models::ids::DecodingError;
 use crate::models::ids::{parse_base62, to_base62};
+use crate::models::user::CurrentUser;
 use crate::utils::auth::{
     generate_auth_token, get_github_user_emails, get_github_user_from_token, hash_password,
 };
@@ -223,8 +224,7 @@ pub async fn github_callback(
 #[post("signup/email")]
 pub async fn sign_up_email(
     Json(sign_up_email_data): Json<SignUpEmail>,
-    client: Data<PostgresPool>,
-    req: HttpRequest,
+    client: Data<PostgresPool>
 ) -> Result<HttpResponse, AuthorizationError> {
     sign_up_email_data
         .validate()
@@ -255,7 +255,7 @@ pub async fn sign_up_email(
         .get_result::<crate::models::user::User>(&mut conn)?;
 
     let session = crate::models::session::NewSession {
-        token: generate_auth_token(32),
+        token: generate_auth_token(64),
         user_id: user.id,
         ip_address: Some("".to_string()),
         device_id: Some("".to_string()),
@@ -282,11 +282,13 @@ pub struct ConfirmLogin {
     pub auth_token: String,
 }
 
-#[get("access_tokens/confirmed_login")]
+#[post("access_tokens/confirmed_login")]
 pub async fn confirm_login(
-    Query(info): Query<ConfirmLogin>,
+    info: web::Json<ConfirmLogin>,
     client: Data<PostgresPool>,
+    current_user: CurrentUser,
 ) -> Result<HttpResponse, AuthorizationError> {
+    println!("confirm_login {:?}", current_user);
     // TODO: check if token is valid
     let mut conn = client.get().unwrap();
     let session = crate::schema::sessions::table

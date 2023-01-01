@@ -1,4 +1,4 @@
-mod auth;
+pub(crate) mod auth;
 mod devices;
 mod health;
 mod profile;
